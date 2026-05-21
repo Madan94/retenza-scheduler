@@ -13,21 +13,27 @@ generator workerClient {
 }
 
 model Template {
-  id        String   @id @default(uuid())
-  name      String
-  content   String
-  channel   String
-  createdAt DateTime @default(now())
-  schedules Schedule[]
+  id            String   @id @default(uuid())
+  name          String
+  content       String
+  channel       String
+  isAiGenerated Boolean  @default(false)
+  aiPrompt      String?
+  createdAt     DateTime @default(now())
+  schedules     Schedule[]
 }
 
 model Schedule {
-  id          String   @id @default(uuid())
-  templateId  String
-  recipient   String
-  scheduledAt DateTime
-  recurring   Boolean @default(false)
-  status      String  @default("pending")
+  id                 String    @id @default(uuid())
+  templateId         String
+  recipient          String
+  scheduledAt        DateTime
+  recurring          Boolean   @default(false)
+  recurrenceInterval String?
+  recurrenceValue    Int?
+  recurrenceUnit     String?
+  lastSentAt         DateTime?
+  status             String    @default("pending")
 
   template Template @relation(fields: [templateId], references: [id])
 }

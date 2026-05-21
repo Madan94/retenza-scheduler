@@ -1,5 +1,6 @@
 const prisma = require("../utils/prisma");
-const messageQueue = require("../queues/messageQueues");
+const { PRESET_INTERVALS, validateRecurrence } = require("../utils/recurrence");
+const { enqueueSchedule, removeScheduleJob } = require("../services/scheduleQueue");
 
 const createSchedule = async (req, res) => {
   try {
@@ -8,6 +9,9 @@ const createSchedule = async (req, res) => {
       recipient,
       scheduledAt,
       recurring = false,
+      recurrenceInterval,
+      recurrenceValue,
+      recurrenceUnit,
     } = req.body;
 
     const missing = [];
@@ -23,9 +27,32 @@ const createSchedule = async (req, res) => {
           templateId: "<uuid from GET /templates>",
           recipient: "user@example.com",
           scheduledAt: "2026-05-20T10:00:00.000Z",
-          recurring: false,
+          recurring: true,
+          recurrenceInterval: "custom",
+          recurrenceValue: 30,
+          recurrenceUnit: "minutes",
         },
       });
+    }
+
+    const isRecurring = Boolean(recurring);
+
+    if (isRecurring && !recurrenceInterval) {
+      return res.status(400).json({
+        error: "recurrenceInterval is required when recurring is true",
+        allowed: PRESET_INTERVALS,
+      });
+    }
+
+    if (isRecurring) {
+      const validation = validateRecurrence({
+        recurrenceInterval,
+        recurrenceValue,
+        recurrenceUnit,
+      });
+      if (!validation.ok) {
+        return res.status(400).json(validation);
+      }
     }
 
     const scheduledDate = new Date(scheduledAt);
@@ -36,27 +63,32 @@ const createSchedule = async (req, res) => {
       });
     }
 
+    if (scheduledDate.getTime() <= Date.now() && !isRecurring) {
+      return res.status(400).json({
+        error: "scheduledAt must be in the future for one-time schedules",
+      });
+    }
+
     const schedule = await prisma.schedule.create({
       data: {
         templateId,
         recipient,
         scheduledAt: scheduledDate,
-        recurring: Boolean(recurring),
+        recurring: isRecurring,
+        recurrenceInterval: isRecurring ? recurrenceInterval : null,
+        recurrenceValue:
+          isRecurring && recurrenceInterval === "custom"
+            ? Number(recurrenceValue)
+            : null,
+        recurrenceUnit:
+          isRecurring && recurrenceInterval === "custom"
+            ? recurrenceUnit
+            : null,
+        status: isRecurring ? "active" : "pending",
       },
     });
 
-    await messageQueue.add(
-        "sendMessage",
-        {
-          scheduleId: schedule.id,
-        },
-        {
-          delay: Math.max(
-            new Date(scheduledAt).getTime() - Date.now(),
-            0
-          ),
-        }
-    );
+    await enqueueSchedule(schedule);
 
     res.status(201).json(schedule);
   } catch (error) {
@@ -94,7 +126,39 @@ const getSchedules = async (req, res) => {
   }
 };
 
+const cancelSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const schedule = await prisma.schedule.findUnique({
+      where: { id },
+    });
+
+    if (!schedule) {
+      return res.status(404).json({ error: "Schedule not found" });
+    }
+
+    if (schedule.status === "cancelled") {
+      return res.json(schedule);
+    }
+
+    const updated = await prisma.schedule.update({
+      where: { id },
+      data: { status: "cancelled" },
+      include: { template: true },
+    });
+
+    await removeScheduleJob(id);
+
+    res.json(updated);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to cancel schedule" });
+  }
+};
+
 module.exports = {
   createSchedule,
   getSchedules,
+  cancelSchedule,
 };

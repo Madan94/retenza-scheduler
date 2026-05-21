@@ -1,9 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
+
+@theme {
+  --color-brand-gold: #F1A80A;
+  --color-brand-gold-hover: #D97706;
+  --color-dark-slate: #0F172A;
+  --color-surface-light: #F9FAFC;
+  --font-sans: 'Outfit', 'Inter', sans-serif;
+}
 
 body {
   margin: 0;
   padding: 0;
-  background: #0f172a;
-  color: white;
-  font-family: Arial, sans-serif;
+  background-color: var(--color-surface-light);
+  color: var(--color-dark-slate);
+  font-family: var(--font-sans);
+  background-image: radial-gradient(circle, #E2E8F0 1.2px, transparent 1.2px);
+  background-size: 24px 24px;
+  min-height: 100vh;
 }
